@@ -92,7 +92,7 @@ async def LookupOnidName(onid_email: str) -> str | None:
             # Return output or None
             if len(data) != 1:
                 return None
-            return f"{data[0]["attributes"]["firstName"]} {data[0]["attributes"]["lastName"]}"
+            return f"{data[0]['attributes']['firstName']} {data[0]['attributes']['lastName']}"
         except:
             return None
     return await asyncio.to_thread(LookupOnidNameSync, onid_email)
@@ -244,7 +244,7 @@ class CodeInputModal(discord.ui.Modal):
             except:
                 print(f"Failed to nick {interaction.user.id}.")
 
-        await interaction.response.send_message(f"{interaction.user.mention} you have been verified as {onid_email}. ({onid_name})\n\nWelcome to the server. Don't forget to read the rules. :slight_smile:", ephemeral=True)
+        await interaction.response.send_message(f"{interaction.user.mention} you have been verified as {onid_email}. ({onid_name})\n\nWelcome to the server. Don\'t forget to read the rules. :slight_smile:", ephemeral=True)
 
 # Commands
 @discord_command_tree.command(name="post_instructions", description="Posts the verification instructions in the current channel.", guild=discord_server)
