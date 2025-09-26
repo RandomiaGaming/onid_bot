@@ -1,2 +1,4 @@
 environment.json
 database.json
+.git/
+venv/
