@@ -7,4 +7,4 @@ python -m venv venv
 source venv/bin/activate
 
 pip install --upgrade pip
-pip install discord msgraph-sdk azure-identity
+pip install discord requests cryptography
