@@ -1,3 +1,5 @@
+#!/bin/env python
+
 import json
 import os
 import types
@@ -24,6 +26,7 @@ def LoadEnv() -> None:
 LoadEnv()
 
 async def main():
+    """
     reader, writer = await asyncio.open_connection("127.0.0.1", ENV.local_listen_port)
     
     writer.write("Hello World\n".encode(encoding="UTF-8"))
@@ -34,4 +37,7 @@ async def main():
 
     writer.close()
     await writer.wait_closed()
+    """
+
+    print("Status: 200 OK")
 asyncio.run(main())

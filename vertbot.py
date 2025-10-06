@@ -16,6 +16,12 @@ import base64
 # https://discord.com/oauth2/authorize?client_id=1344219132027076629 PROD
 # https://discord.com/oauth2/authorize?client_id=884651584225701900 DEV
 
+# Verify HTML URL
+# https://web.engr.oregonstate.edu/~christj/ONIDbot/Verify?codegoeshere
+
+# Verify API URL
+
+
 # Simple file and json read/write helpers.
 def WriteFile(filePath: str, contents: Union[str, bytes], binary: bool = False) -> None:
     filePath = os.path.realpath(filePath)

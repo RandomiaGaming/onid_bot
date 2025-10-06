@@ -12,11 +12,11 @@
     <script>
         const params = new URLSearchParams(window.location.search);
         const code = params.get("code");
-        if (code) {
-            console.log("Code:", code);
-        } else {
-            console.log("No code supplied.");
+        if (!code) {
+            code = "";
         }
+        console.log(`Code: ${code}`)
+        //fetch("https://web.engr.oregonstate.edu/cgi-bin/cgiwrap/~christj/onidbot_verify")
     </script>
 </body>
 
