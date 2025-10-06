@@ -1,0 +1,39 @@
+What is ONIDbot?
+ONIDbot is a free open source Discord bot which can be added to a server in just a few clicks.
+It was developed by Finlay Christ a cybersecurity major here at Oregon State University.
+ONIDbot is designed to collect and verify the OSU email addresses of your server's members.
+You have full control over which permissions are granted to @everyone and which require the ONIDVerified role.
+That means you can customize how strict the rules should be based upon your community prioreties.
+
+Why do I even need ONIDbot?
+As soon as your Discord server link gets posted on social media that server becomes a public space.
+People from around the world can join regardless of student status or intentions.
+Even the links you post on IdealLogic are public!
+And while banning a single account is easy, without verification trolls can create new accounts with just a few clicks and get right back to their mischief.
+With ONIDbot you add accountability by requiring a valid OSU email address.
+And with that email address our bot can lookup the student's name which makes it easy to hold them accountable.
+
+Getting Started:
+Step one is to add ONIDbot to your server by clicking the link below and following Discord's instructions
+https://discord.com/oauth2/authorize?client_id=1344219132027076629
+Next you will need to verify yourself with ONIDbot by typing /verify. Note this is the only command you are allowed to run without verification.
+Next you will need to specify which role to give after verification by typing /set_verified_role
+Then you will need to decide if ONIDbot should nickname users by running /do_nicknames
+Then you will need to post the verification instructions with /post_instructions
+Or if you just want the verify button and no instructions you can type /post_verify_button
+Now you are all set up!
+
+Debugging:
+Check which role is given to verified members with /get_verified_role
+Reset the verified role to contain all the verified members and nobody else with /refresh_verified_role
+Reset the nickname of verified members with /refresh_nicknames (Doesn't change users who used to be verified back to their original name)
+
+
+/verify (onid: str) - Sends a verification link to the given ONID if it's valid according to the API.
+/config (set_nicknames: bool) (verified_role: role) - Configures weather nicknames are changed to "First Last" after verification or not and which role to assign to verified members.
+/instructions - Posts the instructions including the verify button to the current channel.
+/verify_button - Posts the verify button only into the current channel.
+/user_info (user: member) - Returns the following info about a user: Discord ID, Discord Username, Account Age, Membership Age, ONID email or empty, Has verified role, Name first and last.
+
+All commands require the issuer to be an administrator of the current server.
+All commands other than /verify require the user to be verified within ONIDbot's database.

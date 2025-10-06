@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>OnidBot - Verification</title>
+</head>
+
+<body>
+    <h1>Verifying</h1>
+    <h2>Please Wait...</h2>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get("code");
+        if (code) {
+            console.log("Code:", code);
+        } else {
+            console.log("No code supplied.");
+        }
+    </script>
+</body>
+
+</html>
