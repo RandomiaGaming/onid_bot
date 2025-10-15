@@ -262,6 +262,7 @@ async def on_ready():
     await discord_client.change_presence(activity=discord.CustomActivity("Verifying ONID email addresses..."), status=discord.Status.online)
     print(f"Online as {discord_client.user}")
 
+"""
 async def verify_code(code: str):
 
     try:
@@ -292,7 +293,7 @@ async def verify_code(code: str):
             print(f"Failed to nick {interaction.user.id}.")
 
     await interaction.response.send_message(f"{interaction.user.mention} you have been verified as {onid_email}. ({onid_name})\n\nWelcome to the server. Don\'t forget to read the rules. :slight_smile:", ephemeral=True)
-
+    """
 
 async def handle_client(reader, writer):
     code = (await reader.readline()).decode(encoding="UTF-8").strip()
