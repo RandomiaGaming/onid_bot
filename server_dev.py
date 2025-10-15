@@ -7,7 +7,7 @@ PORT = 35568
 async def HandleClient(reader, writer):
     try:
         code = (await reader.readline()).decode("utf-8").strip()
-        response = f"I am the server and I got \"{code}\" as the code."
+        response = f"Success you are verified as christj@oregonstate.edu.<br />You may now close this tab and return to Discord."
         writer.write(response.encode("utf-8"))
         writer.close()
     except:

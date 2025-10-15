@@ -19,7 +19,7 @@ def Main():
         if not set(code).issubset(set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")):
             print("Error: Illegal chars given to CGI endpoint.")
             return
-        cmd = [ "ssh", "-i", "~/.ssh/osu_ssh_private", "christj@" + SSHServer, "~/ONIDbot/APIBroker.py", code ]
+        cmd = [ "ssh", "-i", "~/.ssh/osu_ssh_private", "christj@" + SSHServer, "~/onid_bot/api_broker.py", code ]
         try:
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=False)
         except subprocess.CalledProcessError as e:

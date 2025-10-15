@@ -1,23 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 
+<style>
+    @font-face {
+        font-family: "osu_font";
+        src: url("./osu_font.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+    }
+
+    * {
+        font-family: "osu_font", sans-serif;
+    }
+
+    body {
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+        overflow: hidden;
+    }
+
+    #text_container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    #logo_container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    #logo {
+        width: 10vw;
+        height: 10vw;
+        aspect-ratio: 1;
+        object-fit: fill;
+    }
+</style>
+
 <head>
     <meta charset="UTF-8">
     <title>OnidBot - Verification</title>
 </head>
 
 <body>
-    <h1>Verifying</h1>
-    <h2>Please Wait...</h2>
-    <script>
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get("code");
-        if (!code) {
-            code = "";
-        }
-        console.log(`Code: ${code}`)
-        //fetch("https://web.engr.oregonstate.edu/cgi-bin/cgiwrap/~christj/onidbot_verify")
-    </script>
+    <div id="logo_container">
+        <img src="./logo.png" id="logo"></img>
+    </div>
+    <div id="text_container">
+        <h1 id="status_text">Verifying. Please wait...</h1>
+    </div>
 </body>
+
+<script>
+    function Main() {
+        const status_text = document.querySelector("#status_text");
+        if (window.location.search.length == 0) {
+            status_text.innerHTML = "Error: No verification code provided in URL.";
+            return;
+        }
+        const code = window.location.search.substring(1);
+        const cgi_endpoint_url = `https://web.engr.oregonstate.edu/cgi-bin/cgiwrap/~christj/onid_bot/verify.py?${code}`;
+        fetch(cgi_endpoint_url).then(response => {
+            response.text().then(output => {
+                status_text.innerHTML = output;
+            }).catch(error => {
+                status_text.innerHTML = "Error: Inline script failed to get text.";
+            });
+        }).catch(error => {
+            status_text.innerHTML = "Error: Inline script failed to fetch.";
+        });
+    }
+    Main();
+</script>
 
 </html>
