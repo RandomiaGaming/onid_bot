@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/sh
 set -x
 
 mkdir -p ~/public_html/
@@ -16,16 +16,16 @@ cp ./verify.py ~/public_html/cgi-bin/onid_bot/verify.py
 chmod 755 ~/public_html/cgi-bin/onid_bot/verify.py
 cp ./osu_font.otf ~/public_html/onid_bot/osu_font.otf
 chmod 644 ~/public_html/onid_bot/osu_font.otf
-cp ./assets_and_docs/logo.png ~/public_html/onid_bot/logo.png
+cp ./logo.png ~/public_html/onid_bot/logo.png
 chmod 644 ~/public_html/onid_bot/logo.png
 
 chmod 755 ./onid_bot.py
 chmod 755 ./api_broker.py
 
-#rm -rf ./venv
+if [ ! -d "./venv" ]; then
+    python -m venv venv
+    source venv/bin/activate
 
-#python -m venv venv
-#source venv/bin/activate
-
-#pip install --upgrade pip
-#pip install discord requests cryptography
+    pip install --upgrade pip
+    pip install discord requests cryptography
+fi

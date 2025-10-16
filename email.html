@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<style>
+    @font-face {
+        font-family: "osu_font";
+        src: url("https://web.engr.oregonstate.edu/~christj/onid_bot/osu_font.otf") format("opentype");
+        font-weight: normal;
+        font-style: normal;
+    }
+
+    * {
+        font-family: "osu_font", sans-serif;
+    }
+
+    a {
+        text-decoration: none;
+    }
+
+    h2 {
+        font-size: 10pt;
+    }
+
+    button {
+        color: #D73F09;
+        font-size: 15pt;
+        padding: 5px;
+        border: 0px solid transparent;
+        box-shadow: inset 0 0 0 2px rgb(80, 80, 80);
+        border-radius: 10px;
+        background-color: rgb(220, 220, 220);
+    }
+    button:hover {
+        background-color: rgb(180, 180, 180);
+        box-shadow: inset 0 0 0 3px rgb(80, 80, 80);
+    }
+</style>
+
+<body style="font-family: Arial, sans-serif;">
+    <h2>Click the button below to complete the verification process with ONIDbot and link your Discord account (##DiscordAt##) with your ONID email (##ONIDEmail##).</h2>
+    <a href="https://web.engr.oregonstate.edu/~christj/onid_bot/verify?##ONIDbotCode##"><button>Complete Verification!</button></a>
+    <h2>If you did not request this message please reach out to christj@oregonstate.edu and I will investigate.</h2>
+</body>
+
+</html>

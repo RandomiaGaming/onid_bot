@@ -1,7 +1,6 @@
 import discord
 import json
 import os
-import types
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import smtplib
 from email.mime.text import MIMEText
@@ -9,64 +8,55 @@ from email.mime.multipart import MIMEMultipart
 import requests
 from datetime import datetime
 import asyncio
-from typing import Union
+import io
 
 # Bot authentication url
-# https://discord.com/oauth2/authorize?client_id=1344219132027076629&scope=bot%20applications.commands&permissions=8
+# https://discord.com/oauth2/authorize?client_id=1344219132027076629
 
 # Simple file and json read/write helpers.
-def WriteFile(filePath: str, contents: Union[str, bytes], binary: bool = False) -> None:
-    filePath = os.path.realpath(filePath)
+def WriteFile(filePath, contents, binary=False):
+    filePath = os.path.realpath(os.path.expanduser(filePath))
     dirPath = os.path.dirname(filePath)
-    os.makedirs(dirPath, exist_ok=True)
-    with open(filePath, "wb" if binary else "w", encoding=(None if binary else "UTF-8")) as file:
-        file.write(contents)
-def ReadFile(filePath: str, defaultContents: Union[str, bytes, None] = None, binary: bool = False) -> Union[str, bytes]:
-    filePath = os.path.realpath(filePath)
-    if not os.path.exists(filePath):
-        if defaultContents != None:
-            return defaultContents
-    with open(filePath, "rb" if binary else "r", encoding=(None if binary else "UTF-8")) as file:
-        return file.read()
-def SerializeJson(object: Union[dict, types.SimpleNamespace]) -> None:
-    if isinstance(object, types.SimpleNamespace):
-        return json.dumps(vars(object))
-    else:
-        return json.dumps(object)
-def DeserializeJson(jsonString: str, simple_namespace: bool = False) -> Union[dict, types.SimpleNamespace]:
-    if simple_namespace:
-        return json.loads(jsonString, object_hook=lambda obj: types.SimpleNamespace(**obj))
-    else:
-        return json.loads(jsonString)
+    if not os.path.exists(dirPath):
+        os.makedirs(dirPath)
+    with io.open(filePath, "wb" if binary else "w", encoding=None if binary else "utf-8") as f:
+        f.write(contents)
+def ReadFile(filePath, defaultContents=None, binary=False):
+    filePath = os.path.realpath(os.path.expanduser(filePath))
+    if defaultContents != None and not os.path.exists(filePath):
+        return defaultContents
+    with io.open(filePath, "rb" if binary else "r", encoding=None if binary else "utf-8") as f:
+        return f.read()
+def SerializeJson(obj):
+    return json.dumps(obj)
+def DeserializeJson(jsonString):
+    return json.loads(jsonString)
 
 # Loading environment.json
-ENV: types.SimpleNamespace = None
-def LoadEnv() -> None:
+ENV = None
+def LoadEnv():
     global ENV
-    os.chdir(os.path.realpath(os.path.dirname(__file__)))
-    ENV = DeserializeJson(ReadFile("./environment.json"), simple_namespace=True)
-    ENV.verification_key = bytes.fromhex(ENV.verification_key)
-    ENV.verification_iv = bytes.fromhex(ENV.verification_iv)
+    ENV = DeserializeJson(ReadFile("~/onid_bot/environment.json"))
 LoadEnv()
 
 # Working with the main user database.
-DB: dict[str] = None
-def LoadDB() -> None:
+DB = None
+def LoadDB():
     global DB
     os.chdir(os.path.realpath(os.path.dirname(__file__)))
     if os.path.isfile("./database.json"):
         DB = DeserializeJson(ReadFile("./database.json"))
     else:
         DB = {}
-def SaveDB() -> None:
+def SaveDB():
     os.chdir(os.path.realpath(os.path.dirname(__file__)))
     WriteFile("./database.json", SerializeJson(DB))
-def DBGet(discord_id: str) -> Union[str, None]:
+def DBGet(discord_id):
     if discord_id in DB:
         return DB[discord_id]
     else:
         return None
-def DBSet(discord_id: str, onid_email: Union[str, None]) -> None:
+def DBSet(discord_id, onid_email):
     if onid_email == None:
         if discord_id in DB:
             del DB[discord_id]
@@ -76,11 +66,11 @@ def DBSet(discord_id: str, onid_email: Union[str, None]) -> None:
 LoadDB()
 
 # Looking up user information by ONID.
-async def LookupOnidName(onid_email: str) -> Union[str, None]:
-    def LookupOnidNameSync(onid_email: str) -> Union[str, None]:
+async def LookupOnidName(onid_email):
+    def LookupOnidNameSync(onid_email):
         try:
             # Get a token
-            response = requests.post("https://api.oregonstate.edu/oauth2/token", data={"grant_type": "client_credentials"}, auth=(ENV.osu_api_id, ENV.osu_api_secret))
+            response = requests.post("https://api.oregonstate.edu/oauth2/token", data={"grant_type": "client_credentials"}, auth=(ENV["osu_api_id"], ENV["osu_api_secret"]))
             response.raise_for_status()
             token = response.json()["access_token"]
 
@@ -99,26 +89,26 @@ async def LookupOnidName(onid_email: str) -> Union[str, None]:
     return await asyncio.to_thread(LookupOnidNameSync, onid_email)
 
 # Sending emails.
-async def SendEmail(to: str, subject: str, body: str) -> None:
-    def SendEmailSync(to: str, subject: str, body: str) -> None:
+async def SendEmail(to, subject, body):
+    def SendEmailSync(to, subject, body):
         # Auth with gmail
         with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
             smtp.starttls()
-            smtp.login(ENV.email_address, ENV.email_password)
+            smtp.login(ENV["email_address"], ENV["email_password"])
 
             # Construct email message
             msg = MIMEMultipart()
-            msg["From"] = ENV.email_address
+            msg["From"] = ENV["email_address"]
             msg["To"] = to
             msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain"))
+            msg.attach(MIMEText(body, "html"))
 
             # Send message
             smtp.send_message(msg)
     return await asyncio.to_thread(SendEmailSync, to, subject, body)
 
 # Generating codes and parsing them.
-def CreateCode(discord_id: str, onid_email: str) -> str:
+def CreateCode(discord_id, onid_email):
     token = { "magic": "d5bI8cRB4QDcp2yi", "discord_id": discord_id, "onid_email": onid_email }
 
     plaintext = SerializeJson(token).encode(encoding="UTF-8")
@@ -126,15 +116,15 @@ def CreateCode(discord_id: str, onid_email: str) -> str:
     padding_length = 16 - (len(plaintext) % 16)
     padded = plaintext + bytes([ padding_length ] * padding_length)
 
-    cipher = Cipher(algorithms.AES(ENV.verification_key), modes.CBC(ENV.verification_iv))
+    cipher = Cipher(algorithms.AES(bytes.fromhex(ENV["verification_key"])), modes.CBC(bytes.fromhex(ENV["verification_iv"])))
     encryptor = cipher.encryptor()
     cyphertext = encryptor.update(padded) + encryptor.finalize()
 
     return cyphertext.hex()
-def ParseCode(code: str) -> tuple[str, str]:
+def ParseCode(code):
     cyphertext = bytes.fromhex(code)
 
-    cipher = Cipher(algorithms.AES(ENV.verification_key), modes.CBC(ENV.verification_iv))
+    cipher = Cipher(algorithms.AES(bytes.fromhex(ENV["verification_key"])), modes.CBC(bytes.fromhex(ENV["verification_iv"])))
     decryptor = cipher.decryptor()
     padded = decryptor.update(cyphertext) + decryptor.finalize()
 
@@ -148,50 +138,46 @@ def ParseCode(code: str) -> tuple[str, str]:
     return token["discord_id"], token["onid_email"]
 
 # WatchDog
-watch_dog_log: dict[list[int]] = { }
-def WatchDogTrim(discord_id: str) -> None:
+watch_dog_log = { }
+def WatchDogTrim(discord_id):
     user_log = []
     if discord_id in watch_dog_log:
         user_log = watch_dog_log[discord_id]
     
     user_log = [ timestamp for timestamp in user_log if timestamp >= (int(datetime.now().timestamp()) - 86400) ]
     watch_dog_log[discord_id] = user_log
-def WatchDogPunish(discord_id: str) -> None:
+def WatchDogPunish(discord_id):
     user_log = []
     if discord_id in watch_dog_log:
         user_log = watch_dog_log[discord_id]
     
     user_log.append(int(datetime.now().timestamp()))
     watch_dog_log[discord_id] = user_log
-def WatchDogForgive(discord_id: str) -> None:
+def WatchDogForgive(discord_id):
     watch_dog_log[discord_id] = []
-def WatchDogQuery(discord_id: str) -> int:
+def WatchDogQuery(discord_id):
     WatchDogTrim(discord_id)
     if not discord_id in watch_dog_log:
         return 0
     else:
         return len(watch_dog_log[discord_id])
-def WatchDogInGoodStanding(discord_id: str) -> bool:
+def WatchDogInGoodStanding(discord_id):
     return WatchDogQuery(discord_id) < 10
 
 # Initialize client and command tree classes.
 discord_client = discord.Client(intents=discord.Intents.default())
 discord_command_tree = discord.app_commands.CommandTree(discord_client)
-discord_server = discord.Object(ENV.discord_server_id)
-discord_verified_role = discord.Object(ENV.discord_verified_role_id)
+discord_server = discord.Object(ENV["discord_server_id"])
+discord_verified_role = discord.Object(ENV["discord_verified_role_id"])
 
 # GUI interactions
 class VerifyButtonView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Request Verification Code", style=discord.ButtonStyle.success, custom_id="verify_button")
+    @discord.ui.button(label="Get Verified!", style=discord.ButtonStyle.success, custom_id="verify_button")
     async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(OnidInputModal())
-
-    @discord.ui.button(label="Enter Verification Code", style=discord.ButtonStyle.success, custom_id="enter_code_button")
-    async def enter_code_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CodeInputModal())
 class OnidInputModal(discord.ui.Modal):
     def __init__(self):
         super().__init__(title="ONID Email", timeout=None, custom_id="onid_input_modal")
@@ -210,51 +196,19 @@ class OnidInputModal(discord.ui.Modal):
         WatchDogPunish(str(interaction.user.id))
 
         code = CreateCode(str(interaction.user.id), onid_email)
-        await SendEmail(onid_email, "Verification Code - OSU Climbing Club", f"Your verification code for the OSU Climbing Club's official Discord server is:\n\n{code}\n\nIf you did not request this code please reach out to Indoor.RockClimbing@oregonstate.edu and we will investigate.")
+        email = ReadFile("./email.html").replace("##ONIDbotCode##", code).replace("##DiscordAt##", "@" + interaction.user.name).replace("##ONIDEmail##", onid_email)
+        await SendEmail(onid_email, "Get Verified - ONIDbot", email)
         
         await interaction.response.send_message(f"A verification code has been sent to {onid_email}.\n\nPlease allow up to 15 minutes for the code to arive, and **check spam.**", ephemeral=True)
-class CodeInputModal(discord.ui.Modal):
-    def __init__(self):
-        super().__init__(title="Verification Code", timeout=None, custom_id="code_input_modal")
-    
-    code_input = discord.ui.TextInput(label="Enter your verification code:", placeholder="123456789abcdef...", required=True, custom_id="code_input")
-    async def on_submit(self, interaction: discord.Interaction):
-        code = str(self.code_input)
-
-        try:
-            discord_id, onid_email = ParseCode(code)
-            if discord_id != str(interaction.user.id):
-                raise Exception("That code is for someone else.")
-        except:
-            await interaction.response.send_message(f"That code doesn't look right. Please try again.", ephemeral=True)
-            return
-        
-        if not WatchDogInGoodStanding(str(interaction.user.id)):
-            await interaction.response.send_message(f"TOO MANY REQUESTS! Please wait 24 hours.", ephemeral=True)
-            return
-        WatchDogPunish(str(interaction.user.id))
-
-        DBSet(str(interaction.user.id), onid_email)
-        await interaction.user.add_roles(discord_verified_role)
-        onid_name = await LookupOnidName(onid_email)
-        if onid_name == None:
-            print(f"Failed to lookup onid name for {onid_email}.")
-        else:
-            try:
-                await interaction.user.edit(nick=onid_name)
-            except:
-                print(f"Failed to nick {interaction.user.id}.")
-
-        await interaction.response.send_message(f"{interaction.user.mention} you have been verified as {onid_email}. ({onid_name})\n\nWelcome to the server. Don\'t forget to read the rules. :slight_smile:", ephemeral=True)
 
 # Commands
-@discord_command_tree.command(name="post_instructions", description="Posts the verification instructions in the current channel.", guild=discord_server)
+@discord_command_tree.command(name="post_verify_button", description="Posts the verification button in the current channel.", guild=discord_server)
 async def instructions(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("You need the administrator permission to run this command.", ephemeral=True)
         return
     
-    await interaction.channel.send("Welcome to the OSU Climbing Club official Discord server.\n\nTo get access to the rest of the server you will need to verify your ONID email address.\n\u200b", view=VerifyButtonView())
+    await interaction.channel.send("", view=VerifyButtonView())
     await interaction.response.send_message("Done!", ephemeral=True)
 @discord_command_tree.command(name="get_user_info", description="Posts a bunch of debug information on a target user just for you.", guild=discord_server)
 async def get_user_info(interaction: discord.Interaction, user: discord.Member):
@@ -269,11 +223,62 @@ async def get_user_info(interaction: discord.Interaction, user: discord.Member):
     onid_name = await LookupOnidName(onid_email)
     watchdog_requests = WatchDogQuery(user_id)
     await interaction.response.send_message(f"""User: {user_mention}\nUser ID: {user_id}\nVerified Role: {verified_role}\nONID: {onid_email}\nONID Name: {onid_name}\nWatchDog Requests: {watchdog_requests}""", ephemeral=True)
-
-# Launch the bot and log ready message to console
 @discord_client.event
 async def on_ready():
     await discord_command_tree.sync(guild=discord_server)
     discord_client.add_view(VerifyButtonView())
     print(f"Online as {discord_client.user}")
-discord_client.run(ENV.discord_token)
+
+# Web API
+async def ApiVerifyCode(code):
+    try:
+        discord_id, onid_email = ParseCode(code)
+    except:
+        return f"That code doesn't look right. Please try again."
+    
+    if not WatchDogInGoodStanding(discord_id):
+        return f"TOO MANY REQUESTS! Please wait 24 hours."
+    WatchDogPunish(discord_id)
+
+    DBSet(discord_id, onid_email)
+
+    discord_server_obj = discord_client.get_guild(ENV["discord_server_id"])
+    if discord_server_obj is None:
+        discord_server_obj = await discord_client.fetch_guild(ENV["discord_server_id"])
+
+    discord_user_obj = discord_server_obj.get_member(discord_id)
+    if discord_user_obj is None:
+        discord_user_obj = await discord_server_obj.fetch_member(discord_id)
+
+    await discord_user_obj.add_roles(discord_verified_role)
+    onid_name = await LookupOnidName(onid_email)
+    if onid_name == None:
+        print(f"Failed to lookup onid name for {onid_email}.")
+    else:
+        try:
+            await discord_user_obj.edit(nick=onid_name)
+        except:
+            print(f"Failed to nick {discord_id}.")
+
+    return f"Success your Discord account (@{discord_user_obj.name}) has been linked with your ONID email ({onid_email}).<br />You may now close this tab and return to Discord."
+async def ApiHandleClient(reader, writer):
+    try:
+        code = (await reader.readline()).decode("utf-8").strip()
+        response = await ApiVerifyCode(code)
+        writer.write(response.encode("utf-8"))
+        writer.close()
+    except:
+        pass
+async def ApiRunServer():
+    server = await asyncio.start_server(ApiHandleClient, "127.0.0.1", ENV["local_api_port"])
+    print("API Server running on 127.0.0.1:" + str(ENV["local_api_port"]) + ".")
+    async with server:
+        await server.serve_forever()
+
+# Main
+async def Main():
+    await asyncio.gather(
+        ApiRunServer(),
+        discord_client.start(ENV["discord_token"])
+    )
+asyncio.run(Main())

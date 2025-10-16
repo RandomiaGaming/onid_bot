@@ -4,7 +4,7 @@
 <style>
     @font-face {
         font-family: "osu_font";
-        src: url("./osu_font.otf") format("opentype");
+        src: url("https://web.engr.oregonstate.edu/~christj/onid_bot/osu_font.otf") format("opentype");
         font-weight: normal;
         font-style: normal;
     }
@@ -29,6 +29,10 @@
         display: flex;
         justify-content: center;
         align-items: center;
+    }
+
+    #status_text {
+        text-align: center;
     }
 
     #logo_container {
@@ -62,13 +66,21 @@
 </body>
 
 <script>
-    function Main() {
+    "use-strict";
+    (() => {
         const status_text = document.querySelector("#status_text");
         if (window.location.search.length == 0) {
             status_text.innerHTML = "Error: No verification code provided in URL.";
             return;
         }
         const code = window.location.search.substring(1);
+        code_charset = new Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
+        for (const c of code) {
+            if (!code_charset.has(c)) {
+                status_text.innerHTML = "Error: Illegal chars in verification code provided in URL.";
+                return;
+            }
+        }
         const cgi_endpoint_url = `https://web.engr.oregonstate.edu/cgi-bin/cgiwrap/~christj/onid_bot/verify.py?${code}`;
         fetch(cgi_endpoint_url).then(response => {
             response.text().then(output => {
@@ -79,8 +91,7 @@
         }).catch(error => {
             status_text.innerHTML = "Error: Inline script failed to fetch.";
         });
-    }
-    Main();
+    })();
 </script>
 
 </html>

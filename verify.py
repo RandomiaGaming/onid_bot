@@ -4,9 +4,8 @@ import subprocess
 import codecs
 import sys
 
-StartMarker = "##Begin ONIDbot Output##\n"
-EndMarker = "\n##End ONIDbot Output##"
-SSHServer = "flip4.engr.oregonstate.edu"
+StartMarker = "##Begin ONIDbot Output##"
+EndMarker = "##End ONIDbot Output##"
 
 def Main():
     print("Content-Type: text/plain")
@@ -19,7 +18,7 @@ def Main():
         if not set(code).issubset(set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")):
             print("Error: Illegal chars given to CGI endpoint.")
             return
-        cmd = [ "ssh", "-i", "~/.ssh/osu_ssh_private", "christj@" + SSHServer, "~/onid_bot/api_broker.py", code ]
+        cmd = [ "ssh", "-i", "~/.ssh/osu_ssh_private", "christj@flip4.engr.oregonstate.edu", "~/onid_bot/api_broker.py", code ]
         try:
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=False)
         except subprocess.CalledProcessError as e:
@@ -37,7 +36,7 @@ def Main():
         if endPos == -1:
             print("Error: No end marker returned by API broker.")
             return
-        print(output[startPos:endPos])
+        print(output[startPos:endPos].strip())
     except:
         print("Error: Unknown error in CGI endpoint.")
 Main()
