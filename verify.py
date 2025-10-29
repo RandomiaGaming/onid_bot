@@ -7,6 +7,11 @@ import sys
 StartMarker = "##Begin ONIDbot Output##"
 EndMarker = "##End ONIDbot Output##"
 
+SSHHost = "flip4.engr.oregonstate.edu"
+SSHUser = "christj"
+SSHKeyPath = "~/.ssh/osu_ssh_private"
+APIBrokerPath = "~/onid_bot/api_broker.py"
+
 def Main():
     print("Content-Type: text/plain")
     print("")
@@ -18,7 +23,7 @@ def Main():
         if not set(code).issubset(set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")):
             print("Error: Illegal chars given to CGI endpoint.")
             return
-        cmd = [ "ssh", "-i", "~/.ssh/osu_ssh_private", "christj@flip4.engr.oregonstate.edu", "~/onid_bot/api_broker.py", code ]
+        cmd = [ "ssh", "-i", SSHKeyPath, SSHUser + "@" + SSHHost, APIBrokerPath, code ]
         try:
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=False)
         except subprocess.CalledProcessError as e:

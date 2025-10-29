@@ -30,7 +30,8 @@ def DeserializeJson(jsonString):
 ENV = None
 def LoadEnv():
     global ENV
-    ENV = DeserializeJson(ReadFile("~/onid_bot/environment.json"))
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    ENV = DeserializeJson(ReadFile("./environment.json"))
 
 async def Main():
     print(StartMarker)
@@ -51,8 +52,8 @@ async def Main():
         print(response)
     except ConnectionRefusedError:
         print("Error: Connection refused from API broker. Is the server running?")
-    except Exception as ex:
-        print(f"Error: Unknown error in API broker.")
+    except:
+        print("Error: Unknown error in API broker.")
     finally:
         print(EndMarker)
 asyncio.run(Main())

@@ -3,3 +3,4 @@ database.json
 .git/
 venv/
 backups/
+refresh.token
