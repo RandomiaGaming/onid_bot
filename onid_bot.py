@@ -8,94 +8,151 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import requests
-from datetime import datetime
 import asyncio
 import io
 import base64
+from datetime import datetime, timezone
 import time
+import traceback
 
 # Bot authentication url
 # https://discord.com/oauth2/authorize?client_id=1344219132027076629
 
-# Simple file and json read/write helpers.
-def WriteFile(filePath, contents, binary=False):
+# region File IO
+def IO_WriteFile(filePath, contents, binary=False):
     filePath = os.path.realpath(os.path.expanduser(filePath))
     dirPath = os.path.dirname(filePath)
     if not os.path.exists(dirPath):
         os.makedirs(dirPath)
     with io.open(filePath, "wb" if binary else "w", encoding=None if binary else "utf-8") as f:
         f.write(contents)
-def ReadFile(filePath, defaultContents=None, binary=False):
+def IO_ReadFile(filePath, defaultContents=None, binary=False):
     filePath = os.path.realpath(os.path.expanduser(filePath))
     if defaultContents != None and not os.path.exists(filePath):
         return defaultContents
     with io.open(filePath, "rb" if binary else "r", encoding=None if binary else "utf-8") as f:
         return f.read()
-def SerializeJson(obj):
-    return json.dumps(obj)
-def DeserializeJson(jsonString):
+def IO_SerializeJson(obj):
+    return json.dumps(obj, indent=4)
+def IO_DeserializeJson(jsonString):
     return json.loads(jsonString)
+def IO_GetEpoch():
+    return int(time.time()) + time.localtime().tm_gmtoff
+def IO_GetTime():
+    epoch = IO_GetEpoch()
+    timestamp = datetime.fromtimestamp(epoch, tz=timezone.utc)
+    return timestamp.strftime("%I:%M%p %m/%d").lower()
+# endregion
 
-# Loading environment.json
+# region Environment
 ENV = None
-def LoadEnv():
+def Env_Load():
     global ENV
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    ENV = DeserializeJson(ReadFile("./environment.json"))
-LoadEnv()
+    env_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "environment.json")
+    ENV = IO_DeserializeJson(IO_ReadFile(env_path))
+def Env_Save():
+    env_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "environment.json")
+    IO_WriteFile(env_path, IO_SerializeJson(ENV))
+Env_Load()
+# endregion
+
+# region Logs
+def Log_Generic(message, log_type, ansi_color):
+    padding = " " * (8 - len(log_type))
+    formatted_message = f"{log_type}{padding}({IO_GetTime()} {IO_GetEpoch()}): {message}"
+    print(f"\033[{ansi_color}m{formatted_message}\033[0m", flush=True)
+    log_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "log.txt")
+    log_contents = ""
+    if os.path.exists(log_path):
+        log_contents = IO_ReadFile(log_path)
+    IO_WriteFile(log_path, log_contents + f"{formatted_message}\n")
+def Log_Info(message):
+    Log_Generic(message, "Info", "37")
+def Log_Warning(message):
+    Log_Generic(message, "Warning", "33")
+def Log_Error(message):
+    Log_Generic(message, "ERROR", "31")
+def Log_Exception(ex):
+    tb = ex.__traceback__
+    while tb is not None:
+        filename = tb.tb_frame.f_code.co_filename
+        lineno = tb.tb_lineno
+        funcname = tb.tb_frame.f_code.co_name
+        if os.path.realpath(filename) == os.path.realpath(__file__):
+            Log_Generic(f"{str(ex)} in {filename} at line {lineno} in {funcname}()", "EXCEPTION", "31")
+            return
+        tb = tb.tb_next
+    Log_Generic(f"{str(ex)} in unknown at line unknown in unknown", "EXCEPTION", "31")
+# endregion
 
 # Working with the main user database.
 DB = None
-def LoadDB():
+def DB_Backup():
+    db_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "database.json")
+    backup_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), f"backups/{IO_GetEpoch()}.json")
+    backups_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "backups")
+    latest_backup = 0
+    for backup_time in [int(os.path.splitext(backup_path)[0]) for backup_path in os.listdir(backups_path)]:
+        if backup_time > latest_backup:
+            latest_backup = backup_time
+    if IO_GetEpoch() - latest_backup > 24 * 60 * 60:
+        IO_WriteFile(backup_path, IO_ReadFile(db_path))
+        Log_Info(f"Saved backup to {backup_path}")
+def DB_Load():
     global DB
-    os.chdir(os.path.realpath(os.path.dirname(__file__)))
-    if os.path.isfile("./database.json"):
-        DB = DeserializeJson(ReadFile("./database.json"))
+    db_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "database.json")
+    if os.path.isfile(db_path):
+        DB = IO_DeserializeJson(IO_ReadFile(db_path))
     else:
         DB = {}
-def SaveDB():
-    os.chdir(os.path.realpath(os.path.dirname(__file__)))
-    WriteFile("./database.json", SerializeJson(DB))
-def DBGet(discord_id):
+        DB_Save()
+def DB_Save():
+    db_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "database.json")
+    IO_WriteFile(db_path, IO_SerializeJson(DB))
+    DB_Backup()
+def DB_Get(discord_id):
     if discord_id in DB:
         return DB[discord_id]
     else:
         return None
-def DBSet(discord_id, onid_email):
+def DB_Set(discord_id, onid_email):
     if onid_email == None:
         if discord_id in DB:
             del DB[discord_id]
     else:
         DB[discord_id] = onid_email
-    SaveDB()
-LoadDB()
+    DB_Save()
+DB_Load()
 
-# Looking up user information by ONID.
-async def LookupOnidName(onid_email):
-    def LookupOnidNameSync(onid_email):
-        try:
-            # Get a token
-            response = requests.post("https://api.oregonstate.edu/oauth2/token", data={"grant_type": "client_credentials"}, auth=(ENV["osu_api_id"], ENV["osu_api_secret"]))
-            response.raise_for_status()
-            token = response.json()["access_token"]
+# region OSU API
+def OSU_LookupOnidName(onid_email):
+    try:
+        # Get a token
+        response = requests.post("https://api.oregonstate.edu/oauth2/token", data={"grant_type": "client_credentials"}, auth=(ENV["osu_api_id"], ENV["osu_api_secret"]))
+        response.raise_for_status()
+        token = response.json()["access_token"]
 
-            # Send a request
-            headers = { "Authorization": f"Bearer {token}", "Accept": "application/json" }
-            response = requests.get(f"https://api.oregonstate.edu/v2/directory?filter[emailAddress]={onid_email}", headers=headers)
-            response.raise_for_status()
-            data = response.json()["data"]
+        # Send a request
+        headers = { "Authorization": f"Bearer {token}", "Accept": "application/json" }
+        response = requests.get(f"https://api.oregonstate.edu/v2/directory?filter[emailAddress]={onid_email}", headers=headers)
+        response.raise_for_status()
+        data = response.json()["data"]
 
-            # Return output or None
-            if len(data) != 1:
-                return None
-            return f"{data[0]['attributes']['firstName']} {data[0]['attributes']['lastName']}"
-        except:
-            return None
-    return await asyncio.to_thread(LookupOnidNameSync, onid_email)
+        # Return output or None
+        output = None
+        if len(data) == 1:
+            output = f"{data[0]['attributes']['firstName']} {data[0]['attributes']['lastName']}"
+        Log_Info(f"OSU directory lookup for {onid_email} returned {output}")
+        return output
+    except Exception as ex:
+        Log_Exception(ex)
+        return None
+async def OSU_LookupOnidNameAsync(onid_email):
+    return await asyncio.to_thread(OSU_LookupOnidName, onid_email)
+# endregion
 
-# MSAath
-# Returns refresh_token, access_token
-def DoDeviceCodeFlow():
+# region Email With MSAath
+def DoManualAuthFlow():
     # Tenant id is required for rooted scope paths on the device code endpoint.
     device_code_request_data = { "client_id": ENV["msauth_client_id"], "scope": " ".join(ENV["msauth_scopes"]) }
     device_code_request = requests.post("https://login.microsoftonline.com/" + ENV["msauth_tenant_id"] + "/oauth2/v2.0/devicecode", data=device_code_request_data)
@@ -112,8 +169,9 @@ def DoDeviceCodeFlow():
         }
         token_request = requests.post("https://login.microsoftonline.com/" + ENV["msauth_tenant_id"] + "/oauth2/v2.0/token", data=token_request_data)
         if token_request.ok:
-            token = token_request.json()
-            return token["refresh_token"], token["access_token"]
+            ENV["msauth_refresh_token"] = token_request.json()["refresh_token"]
+            Env_Save()
+            return
         else:
             token_request_error = token_request.json()
             if token_request_error["error"] == "authorization_pending":
@@ -121,38 +179,28 @@ def DoDeviceCodeFlow():
             else:
                 raise Exception(token_request_error["error"])
     raise Exception("Timed out waiting for device authorization")
-# Returns refresh_token, access_token
-def DoRefreshFlow(refresh_token):
+def GetAccessToken():
     token_request_data = {
         "grant_type": "refresh_token",
         "client_id": ENV["msauth_client_id"],
-        "refresh_token": refresh_token,
+        "refresh_token": ENV["msauth_refresh_token"],
         "scope": " ".join(ENV["msauth_scopes"]),
     }
     token_request = requests.post("https://login.microsoftonline.com/" + ENV["msauth_tenant_id"] + "/oauth2/v2.0/token", data=token_request_data)
     token_request.raise_for_status()
     token = token_request.json()
-    return token["refresh_token"], token["access_token"]
-# Returns the email address from a token by UPN
+    ENV["msauth_refresh_token"] = token["refresh_token"]
+    Env_Save()
+    return token["access_token"]
 def EmailFromToken(access_token):
     token_body = access_token.split(".")[1]
     token_body += '=' * (-len(token_body) % 4)
     token_json = base64.urlsafe_b64decode(token_body).decode("utf-8")
     token_object = json.loads(token_json)
     return token_object["upn"]
-REFRESH_TOKEN = None
-def MSAuthInit():
-    global REFRESH_TOKEN
-    REFRESH_TOKEN, _ = DoDeviceCodeFlow()
-def MSAuthGetAccessToken():
-    global REFRESH_TOKEN
-    REFRESH_TOKEN, access_token = DoRefreshFlow(REFRESH_TOKEN)
-    return access_token
-
-# Sending emails.
 async def SendEmail(to, subject, body):
     def SendEmailSync(to, subject, body):
-        access_token = MSAuthGetAccessToken()
+        access_token = GetAccessToken()
         email = EmailFromToken(access_token)
         with smtplib.SMTP("smtp.office365.com", 587) as smtp:
             smtp.starttls()
@@ -170,12 +218,15 @@ async def SendEmail(to, subject, body):
 
             smtp.send_message(msg)
     return await asyncio.to_thread(SendEmailSync, to, subject, body)
+if not "msauth_refresh_token" in ENV:
+    DoManualAuthFlow()
+# endregion
 
 # Generating codes and parsing them.
 def CreateCode(discord_id, onid_email):
     token = { "magic": "d5bI8cRB4QDcp2yi", "discord_id": discord_id, "onid_email": onid_email }
 
-    plaintext = SerializeJson(token).encode(encoding="UTF-8")
+    plaintext = IO_SerializeJson(token).encode(encoding="UTF-8")
 
     padding_length = 16 - (len(plaintext) % 16)
     padded = plaintext + bytes([ padding_length ] * padding_length)
@@ -195,7 +246,7 @@ def ParseCode(code):
     padding_length = padded[-1]
     plaintext = padded[:-padding_length].decode(encoding="UTF-8")
 
-    token =  DeserializeJson(plaintext)
+    token =  IO_DeserializeJson(plaintext)
     if token["magic"] != "d5bI8cRB4QDcp2yi":
         raise Exception("Bad token magic.")
 
@@ -261,13 +312,13 @@ class OnidInputModal(discord.ui.Modal):
         WatchDogPunish(str(interaction.user.id))
 
         code = CreateCode(str(interaction.user.id), onid_email)
-        email = ReadFile("./email.html").replace("##ONIDbotCode##", code).replace("##DiscordAt##", "@" + interaction.user.name).replace("##ONIDEmail##", onid_email)
+        email = IO_ReadFile("./email.html").replace("##ONIDbotCode##", code).replace("##DiscordAt##", "@" + interaction.user.name).replace("##ONIDEmail##", onid_email)
         await SendEmail(onid_email, "Get Verified - ONIDbot", email)
         
         await interaction.response.send_message(f"A verification code has been sent to {onid_email}.\n\nPlease allow up to 15 minutes for the code to arive, and **check spam.**", ephemeral=True)
 
 # Commands
-@discord_command_tree.command(name="post_verify_button", description="Posts the verification button in the current channel.", guild=discord_server)
+@discord_command_tree.command(name="post_verify_button", description="Posts the get verified button to the current channel.", guild=discord_server)
 async def instructions(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("You need the administrator permission to run this command.", ephemeral=True)
@@ -285,8 +336,8 @@ async def get_user_info(interaction: discord.Interaction, user: discord.Member):
     user_mention = user.mention
     verified_role = any([ role.id == discord_verified_role.id for role in user.roles ])
     unverified_role = any([ role.id == discord_unverified_role.id for role in user.roles ])
-    onid_email = DBGet(user_id)
-    onid_name = await LookupOnidName(onid_email)
+    onid_email = DB_Get(user_id)
+    onid_name = await OSU_LookupOnidNameAsync(onid_email)
     watchdog_requests = WatchDogQuery(user_id)
     await interaction.response.send_message(f"""User: {user_mention}\nUser ID: {user_id}\nVerified Role: {verified_role}\nUnverified Role: {unverified_role}\nONID: {onid_email}\nONID Name: {onid_name}\nWatchDog Requests: {watchdog_requests}""", ephemeral=True)
 @discord_client.event
@@ -295,24 +346,6 @@ async def on_ready():
     discord_client.add_view(VerifyButtonView())
     await discord_client.change_presence(activity=discord.CustomActivity("Verifying ONID email addresses..."), status=discord.Status.online)
     print(f"Online as {discord_client.user}")
-    #asyncio.create_task(test())
-async def test():
-    discord_ids = []
-    for discord_id in DB:
-        discord_ids.append(discord_id)
-    for discord_id in discord_ids:
-        try:
-            discord_server_obj = discord_client.get_guild(ENV["discord_server_id"])
-            if discord_server_obj is None:
-                discord_server_obj = await discord_client.fetch_guild(ENV["discord_server_id"])
-            discord_user_obj = discord_server_obj.get_member(discord_id)
-            if discord_user_obj is None:
-                discord_user_obj = await discord_server_obj.fetch_member(discord_id)
-            print(discord_id)
-        except Exception as ex:
-            print(discord_id + " ", end="")
-            print(str(ex))
-        await asyncio.sleep(0.5)
 
 # Web API
 async def ApiVerifyCode(code):
@@ -325,7 +358,7 @@ async def ApiVerifyCode(code):
         return f"TOO MANY REQUESTS! Please wait 24 hours."
     WatchDogPunish(discord_id)
 
-    DBSet(discord_id, onid_email)
+    DB_Set(discord_id, onid_email)
 
     discord_server_obj = discord_client.get_guild(ENV["discord_server_id"])
     if discord_server_obj is None:
@@ -337,7 +370,7 @@ async def ApiVerifyCode(code):
 
     await discord_user_obj.add_roles(discord_verified_role)
     await discord_user_obj.remove_roles(discord_unverified_role)
-    onid_name = await LookupOnidName(onid_email)
+    onid_name = await OSU_LookupOnidNameAsync(onid_email)
     if onid_name == None:
         print(f"Failed to lookup onid name for {onid_email}.")
     else:
@@ -367,5 +400,4 @@ async def Main():
         ApiRunServer(),
         discord_client.start(ENV["discord_token"])
     )
-MSAuthInit()
 asyncio.run(Main())

@@ -1,0 +1,5 @@
+EXCEPTION(09:58pm 11/02 1762120704): Insufficient number of cocks sucked. in /nfs/stak/users/christj/onid_bot/onid_bot.py at line 400 in Main()
+EXCEPTION(09:58pm 11/02 1762120739): [Errno 2] No such file or directory: 'dirthatwasnevereventhere' in /nfs/stak/users/christj/onid_bot/onid_bot.py at line 400 in Main()
+Info    (11:36pm 11/02 1762126614): OSU directory lookup for christj@oregonstate.edu returned None
+Info    (12:17am 11/03 1762129057): OSU directory lookup for christj@oregonstate.edu returned None
+Info    (12:24am 11/03 1762129471): OSU directory lookup for christj@oregonstate.edu returned None
