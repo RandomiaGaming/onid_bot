@@ -36,3 +36,11 @@ Or you could simply instruct members with technical issues to reach out in DMs.
 Finally run "/post_verify_button" to post the "Get Verified" button into the get-verified channel.
 
 Setup should be complete but I recommend double checking by going through the verification process on an alt account.
+
+# TODO:
+Write docs on how to setup optional unverified role
+Code ONIDbot to record better logs
+Code ONIDbot to give new members unverified
+Code ONIDbot to support different verified_role and unverified_role for each server
+Code ONIDbot to store verification status per user per server not globally
+Make HTML layout and styles prettier for Verify.html and Email.html

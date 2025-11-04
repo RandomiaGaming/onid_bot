@@ -1,6 +1,6 @@
 environment.json
 database.json
+log.txt
 .git/
 venv/
 backups/
-refresh.token

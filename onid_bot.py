@@ -13,7 +13,8 @@ import io
 import base64
 from datetime import datetime, timezone
 import time
-import traceback
+import hmac
+import hashlib
 
 # Bot authentication url
 # https://discord.com/oauth2/authorize?client_id=1344219132027076629
@@ -32,10 +33,15 @@ def IO_ReadFile(filePath, defaultContents=None, binary=False):
         return defaultContents
     with io.open(filePath, "rb" if binary else "r", encoding=None if binary else "utf-8") as f:
         return f.read()
-def IO_SerializeJson(obj):
-    return json.dumps(obj, indent=4)
+def IO_SerializeJson(obj, compact=False):
+    return json.dumps(obj, indent=None if compact else 4)
 def IO_DeserializeJson(jsonString):
     return json.loads(jsonString)
+def IO_EncodeBase64(payloadBytes):
+    return base64.urlsafe_b64encode(payloadBytes).decode(encoding="utf-8").replace("=", "")
+def IO_DecodeBase64(base64String):
+    base64String += "=" * ((-len(base64String)) % 4)
+    return base64.urlsafe_b64decode(base64String.encode(encoding="utf-8"))
 def IO_GetEpoch():
     return int(time.time()) + time.localtime().tm_gmtoff
 def IO_GetTime():
@@ -58,7 +64,7 @@ Env_Load()
 
 # region Logs
 def Log_Generic(message, log_type, ansi_color):
-    padding = " " * (8 - len(log_type))
+    padding = " " * (8 - len(log_type)) if len(log_type) < 8 else ""
     formatted_message = f"{log_type}{padding}({IO_GetTime()} {IO_GetEpoch()}): {message}"
     print(f"\033[{ansi_color}m{formatted_message}\033[0m", flush=True)
     log_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "log.txt")
@@ -75,14 +81,15 @@ def Log_Error(message):
 def Log_Exception(ex):
     tb = ex.__traceback__
     while tb is not None:
-        filename = tb.tb_frame.f_code.co_filename
-        lineno = tb.tb_lineno
-        funcname = tb.tb_frame.f_code.co_name
-        if os.path.realpath(filename) == os.path.realpath(__file__):
-            Log_Generic(f"{str(ex)} in {filename} at line {lineno} in {funcname}()", "EXCEPTION", "31")
+        if os.path.realpath(tb.tb_frame.f_code.co_filename) == os.path.realpath(__file__):
+            message = str(ex)
+            funcname = "<module>" if tb.tb_frame.f_code.co_name == "<module>" else tb.tb_frame.f_code.co_name + "()"
+            lineno = tb.tb_lineno
+            line = IO_ReadFile(tb.tb_frame.f_code.co_filename).splitlines()[lineno - 1].strip()
+            Log_Generic(f"{message} in {funcname} line {lineno}: {line}", "ERROR", "31")
             return
         tb = tb.tb_next
-    Log_Generic(f"{str(ex)} in unknown at line unknown in unknown", "EXCEPTION", "31")
+    Log_Generic(f"{str(ex)} at unknown location", "ERROR", "31")
 # endregion
 
 # Working with the main user database.
@@ -97,7 +104,7 @@ def DB_Backup():
             latest_backup = backup_time
     if IO_GetEpoch() - latest_backup > 24 * 60 * 60:
         IO_WriteFile(backup_path, IO_ReadFile(db_path))
-        Log_Info(f"Saved backup to {backup_path}")
+        Log_Info(f"Backed up database.json to {backup_path}")
 def DB_Load():
     global DB
     db_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "database.json")
@@ -138,12 +145,18 @@ def OSU_LookupOnidName(onid_email):
         response.raise_for_status()
         data = response.json()["data"]
 
+        # Manual Override For christj@oregonstate.edu
+        if onid_email == "christj@oregonstate.edu":
+            data = [ { "attributes": { "firstName": "Finlay", "lastName": "Christ" } } ]
+
         # Return output or None
-        output = None
         if len(data) == 1:
             output = f"{data[0]['attributes']['firstName']} {data[0]['attributes']['lastName']}"
-        Log_Info(f"OSU directory lookup for {onid_email} returned {output}")
-        return output
+            Log_Info(f"OSU directory lookup for {onid_email} returned {output}")
+            return output
+        else:
+            Log_Warning(f"OSU directory lookup for {onid_email} returned no data.")
+            return None
     except Exception as ex:
         Log_Exception(ex)
         return None
@@ -151,14 +164,14 @@ async def OSU_LookupOnidNameAsync(onid_email):
     return await asyncio.to_thread(OSU_LookupOnidName, onid_email)
 # endregion
 
-# region Email With MSAath
-def DoManualAuthFlow():
+# region MSAath/Outlook
+def MS_DoManualAuthFlow():
     # Tenant id is required for rooted scope paths on the device code endpoint.
     device_code_request_data = { "client_id": ENV["msauth_client_id"], "scope": " ".join(ENV["msauth_scopes"]) }
     device_code_request = requests.post("https://login.microsoftonline.com/" + ENV["msauth_tenant_id"] + "/oauth2/v2.0/devicecode", data=device_code_request_data)
     device_code_request.raise_for_status()
     device_code_response = device_code_request.json()
-    print(device_code_response["message"])
+    Log_Info(device_code_response["message"])
     start = time.time()
     while time.time() - start < int(device_code_response["expires_in"]):
         time.sleep(int(device_code_response["interval"]))
@@ -179,7 +192,7 @@ def DoManualAuthFlow():
             else:
                 raise Exception(token_request_error["error"])
     raise Exception("Timed out waiting for device authorization")
-def GetAccessToken():
+def MS_GetAccessToken():
     token_request_data = {
         "grant_type": "refresh_token",
         "client_id": ENV["msauth_client_id"],
@@ -192,65 +205,65 @@ def GetAccessToken():
     ENV["msauth_refresh_token"] = token["refresh_token"]
     Env_Save()
     return token["access_token"]
-def EmailFromToken(access_token):
+def MS_EmailFromToken(access_token):
     token_body = access_token.split(".")[1]
-    token_body += '=' * (-len(token_body) % 4)
+    token_body += "=" * (-len(token_body) % 4)
     token_json = base64.urlsafe_b64decode(token_body).decode("utf-8")
     token_object = json.loads(token_json)
     return token_object["upn"]
-async def SendEmail(to, subject, body):
-    def SendEmailSync(to, subject, body):
-        access_token = GetAccessToken()
-        email = EmailFromToken(access_token)
-        with smtplib.SMTP("smtp.office365.com", 587) as smtp:
-            smtp.starttls()
-            smtp.ehlo() # Required before auth. Handshake to agree on supported features.
-            auth_code = base64.b64encode(("user=" + email + "\x01auth=Bearer " + access_token + "\x01\x01").encode("utf-8")).decode("utf-8")
-            code, resp = smtp.docmd("AUTH", "XOAUTH2 " + auth_code)
-            if code != 235:
-                raise Exception("AUTH failed: " + str(code) + " " + resp.decode(encoding="utf-8"))
+def MS_SendEmail(to, subject, body):
+    access_token = MS_GetAccessToken()
+    email = MS_EmailFromToken(access_token)
+    with smtplib.SMTP("smtp.office365.com", 587) as smtp:
+        smtp.starttls()
+        smtp.ehlo() # Required before auth. Handshake to agree on supported features.
+        auth_code = base64.b64encode(("user=" + email + "\x01auth=Bearer " + access_token + "\x01\x01").encode("utf-8")).decode("utf-8")
+        code, resp = smtp.docmd("AUTH", "XOAUTH2 " + auth_code)
+        if code != 235:
+            raise Exception("SMTP auth failure " + str(code) + " " + resp.decode(encoding="utf-8"))
 
-            msg = MIMEMultipart()
-            msg["From"] = email
-            msg["To"] = to
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "html"))
+        msg = MIMEMultipart()
+        msg["From"] = email
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "html"))
 
-            smtp.send_message(msg)
-    return await asyncio.to_thread(SendEmailSync, to, subject, body)
+        smtp.send_message(msg)
+        Log_Info(f"Sent email to {to} with subject {subject}")
+async def MS_SendEmailAsync(to, subject, body):
+    return await asyncio.to_thread(MS_SendEmail, to, subject, body)
 if not "msauth_refresh_token" in ENV:
-    DoManualAuthFlow()
+    MS_DoManualAuthFlow()
 # endregion
 
-# Generating codes and parsing them.
-def CreateCode(discord_id, onid_email):
-    token = { "magic": "d5bI8cRB4QDcp2yi", "discord_id": discord_id, "onid_email": onid_email }
-
-    plaintext = IO_SerializeJson(token).encode(encoding="UTF-8")
-
-    padding_length = 16 - (len(plaintext) % 16)
-    padded = plaintext + bytes([ padding_length ] * padding_length)
-
-    cipher = Cipher(algorithms.AES(bytes.fromhex(ENV["verification_key"])), modes.CBC(bytes.fromhex(ENV["verification_iv"])))
-    encryptor = cipher.encryptor()
-    cyphertext = encryptor.update(padded) + encryptor.finalize()
-
-    return cyphertext.hex()
-def ParseCode(code):
-    cyphertext = bytes.fromhex(code)
-
-    cipher = Cipher(algorithms.AES(bytes.fromhex(ENV["verification_key"])), modes.CBC(bytes.fromhex(ENV["verification_iv"])))
-    decryptor = cipher.decryptor()
-    padded = decryptor.update(cyphertext) + decryptor.finalize()
-
-    padding_length = padded[-1]
-    plaintext = padded[:-padding_length].decode(encoding="UTF-8")
-
-    token =  IO_DeserializeJson(plaintext)
-    if token["magic"] != "d5bI8cRB4QDcp2yi":
-        raise Exception("Bad token magic.")
-
-    return token["discord_id"], token["onid_email"]
+# region Verification Codes
+def Code_Generate(discord_id, onid_email):
+    payload_obj = { "version": 2, "timestamp": IO_GetEpoch(), "discord_id": discord_id, "onid_email": onid_email }
+    payload_bytes = IO_SerializeJson(payload_obj, compact=True).encode(encoding="utf-8")
+    signing_key_bytes = bytes.fromhex(ENV["signing_key"])
+    signature_bytes = hmac.new(signing_key_bytes, payload_bytes, hashlib.sha256).digest()
+    code = IO_EncodeBase64(payload_bytes) + "." + IO_EncodeBase64(signature_bytes)
+    code = IO_EncodeBase64(code.encode(encoding="utf-8"))
+    Log_Info(f"Issued new code for discord_id {discord_id} and onid_email {onid_email}")
+    return code
+def Code_ParseAndVerify(code):
+    code = IO_DecodeBase64(code).decode(encoding="utf-8")
+    index = code.index(".")
+    if index == -1 or index == 0 or index == len(code) - 1:
+        raise Exception("Bad or missing separator")
+    payload_bytes = IO_DecodeBase64(code[:index])
+    signature_bytes = IO_DecodeBase64(code[index + 1:])
+    signing_key_bytes = bytes.fromhex(ENV["signing_key"])
+    expected_signature_bytes = hmac.new(signing_key_bytes, payload_bytes, hashlib.sha256).digest()
+    if not hmac.compare_digest(signature_bytes, expected_signature_bytes):
+        raise Exception("Invalid signature")
+    payload_obj = IO_DeserializeJson(payload_bytes.decode(encoding="utf-8"))
+    if payload_obj["version"] != 2:
+        raise Exception("Incompatible version")
+    if IO_GetEpoch() - payload_obj["timestamp"] > (60 * 60 * 24 * 7):
+        raise Exception("Code expired")
+    return payload_obj
+# endregion
 
 # WatchDog
 watch_dog_log = { }
@@ -311,9 +324,9 @@ class OnidInputModal(discord.ui.Modal):
             return
         WatchDogPunish(str(interaction.user.id))
 
-        code = CreateCode(str(interaction.user.id), onid_email)
+        code = Code_Generate(str(interaction.user.id), onid_email)
         email = IO_ReadFile("./email.html").replace("##ONIDbotCode##", code).replace("##DiscordAt##", "@" + interaction.user.name).replace("##ONIDEmail##", onid_email)
-        await SendEmail(onid_email, "Get Verified - ONIDbot", email)
+        await MS_SendEmailAsync(onid_email, "Get Verified - ONIDbot", email)
         
         await interaction.response.send_message(f"A verification code has been sent to {onid_email}.\n\nPlease allow up to 15 minutes for the code to arive, and **check spam.**", ephemeral=True)
 
@@ -337,7 +350,7 @@ async def get_user_info(interaction: discord.Interaction, user: discord.Member):
     verified_role = any([ role.id == discord_verified_role.id for role in user.roles ])
     unverified_role = any([ role.id == discord_unverified_role.id for role in user.roles ])
     onid_email = DB_Get(user_id)
-    onid_name = await OSU_LookupOnidNameAsync(onid_email)
+    onid_name = None if onid_email == None else await OSU_LookupOnidNameAsync(onid_email)
     watchdog_requests = WatchDogQuery(user_id)
     await interaction.response.send_message(f"""User: {user_mention}\nUser ID: {user_id}\nVerified Role: {verified_role}\nUnverified Role: {unverified_role}\nONID: {onid_email}\nONID Name: {onid_name}\nWatchDog Requests: {watchdog_requests}""", ephemeral=True)
 @discord_client.event
@@ -350,7 +363,9 @@ async def on_ready():
 # Web API
 async def ApiVerifyCode(code):
     try:
-        discord_id, onid_email = ParseCode(code)
+        code_obj = Code_ParseAndVerify(code)
+        discord_id = code_obj["discord_id"]
+        onid_email = code_obj["onid_email"]
     except:
         return f"That code doesn't look right. Please try again."
     
